@@ -1,0 +1,8 @@
+curl -s https://install.zerotier.com | sudo bash
+sudo apt update
+sudo apt install zerotier-one
+sudo systemctl enable zerotier-one
+sudo systemctl start zerotier-one
+sudo zerotier-cli join <network_id> e.g sudo zerotier-cli join a09acf0239xxxxxx
+
+

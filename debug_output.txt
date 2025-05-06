@@ -1,0 +1,2 @@
+ssh_askpass: exec(/usr/bin/ssh-askpass): No such file or directory
+Host key verification failed.
