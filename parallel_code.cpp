@@ -26,19 +26,18 @@ struct Edge {
 class Graph {
 public:
     int num_vertices;
-    int local_num_vertices;   // Local vertices in this process
-    vector<int> row_ptr;      // CSR row pointers
-    vector<int> col_idx;      // CSR column indices
-    vector<double> weights;   // Edge weights
-    vector<int> parent;       // Parent array for SSSP tree
-    vector<double> dist;      // Distance from source
-    vector<bool> affected;    // Affected vertices
-    vector<bool> affected_del;// Affected by deletion
-    vector<int> part;         // Partition assignment for vertices
-    vector<int> global_to_local; // Mapping from global to local vertex IDs
-    vector<int> local_to_global; // Mapping from local to global vertex IDs
-    int rank, size;           // MPI rank and size
-
+    int local_num_vertices;  
+    vector<int> row_ptr;     
+    vector<int> col_idx;     
+    vector<double> weights;   
+    vector<int> parent;       
+    vector<double> dist;      
+    vector<bool> affected;   
+    vector<bool> affected_del;
+    vector<int> part;         
+    vector<int> global_to_local; 
+    vector<int> local_to_global; 
+    int rank, size;          
     Graph(int n, int _rank, int _size) : num_vertices(n), rank(_rank), size(_size) {
         parent.resize(n, -1);
         dist.resize(n, numeric_limits<double>::infinity());
@@ -99,7 +98,6 @@ public:
         weights = new_weights;
     }
 
-    // Add edge to CSR (initial graph construction)
     void addEdge(int u, int v, double w) {
         if (u >= num_vertices || v >= num_vertices || u < 0 || v < 0) {
             cerr << "Rank " << rank << ": Invalid edge (" << u << ", " << v << ")" << endl;
@@ -116,7 +114,6 @@ public:
         }
     }
 
-    // Insert edges from file
     long long insertEdgesFromFile(const string& filename) {
         auto start = high_resolution_clock::now();
         ifstream file(filename);
@@ -142,7 +139,6 @@ public:
                         row_ptr.push_back(col_idx.size());
                     }
 
-                    // Check if edge affects SSSP tree
                     int x = (dist[u] > dist[v]) ? v : u;
                     int y = (x == u) ? v : u;
                     if (dist[y] > dist[x] + w) {
@@ -159,7 +155,6 @@ public:
         return duration_cast<microseconds>(end - start).count();
     }
 
-    // Delete edges from file
     long long deleteEdgesFromFile(const string& filename) {
         auto start = high_resolution_clock::now();
         ifstream file(filename);
@@ -184,8 +179,6 @@ public:
                             for (size_t j = u + 1; j < row_ptr.size(); ++j) {
                                 row_ptr[j]--;
                             }
-
-                            // Check if edge was in SSSP tree
                             if (parent[v] == u || parent[u] == v) {
                                 int y = (dist[u] > dist[v]) ? u : v;
                                 dist[y] = numeric_limits<double>::infinity();
@@ -205,7 +198,6 @@ public:
         return duration_cast<microseconds>(end - start).count();
     }
 
-    // Synchronize distances across processes
     void synchronizeDistances() {
         vector<double> send_dist(num_vertices);
         vector<double> recv_dist(num_vertices);
@@ -224,7 +216,6 @@ public:
     }
 };
 
-// Function to initialize SSSP tree using Dijkstra's algorithm
 void initializeSSSP(Graph& G, int source) {
     G.dist[source] = 0;
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>> pq;
@@ -253,19 +244,19 @@ void initializeSSSP(Graph& G, int source) {
     G.synchronizeDistances();
 }
 
-// Algorithm 2: Identify Affected Vertices
 void processChangedEdges(Graph& G, const vector<Edge>& deletions, const vector<Edge>& insertions) {
     // Process deletions
     #pragma omp parallel for schedule(dynamic)
     for (size_t i = 0; i < deletions.size(); ++i) {
         int u = deletions[i].u;
         int v = deletions[i].v;
-        if (G.part[u] != G.rank) continue;  // Skip if vertex not in this partition
+        if (G.part[u] != G.rank) 
+        continue;  
 
-        // Check if edge is in SSSP tree
         bool in_tree = (G.parent[v] == u || G.parent[u] == v);
         if (in_tree) {
             int y = (G.dist[u] > G.dist[v]) ? u : v;
+
             #pragma omp critical
             {
                 G.dist[y] = numeric_limits<double>::infinity();
@@ -282,7 +273,8 @@ void processChangedEdges(Graph& G, const vector<Edge>& deletions, const vector<E
         int u = insertions[i].u;
         int v = insertions[i].v;
         double w = insertions[i].weight;
-        if (G.part[u] != G.rank) continue;  // Skip if vertex not in this partition
+        if (G.part[u] != G.rank)
+         continue;  
 
         int x = (G.dist[u] > G.dist[v]) ? v : u;
         int y = (x == u) ? v : u;
@@ -307,7 +299,8 @@ void asynchronousUpdate(Graph& G, int async_level) {
         // Process deletion-affected vertices
         #pragma omp parallel for schedule(dynamic)
         for (int v = 0; v < G.num_vertices; ++v) {
-            if (G.part[v] != G.rank) continue;  // Skip if vertex not in this partition
+            if (G.part[v] != G.rank) 
+            continue; 
             if (G.affected_del[v]) {
                 queue<int> Q;
                 Q.push(v);
@@ -338,13 +331,13 @@ void asynchronousUpdate(Graph& G, int async_level) {
             }
         }
 
-        // Process affected vertices
+
         change = true;
         while (change) {
             change = false;
             #pragma omp parallel for schedule(dynamic)
             for (int v = 0; v < G.num_vertices; ++v) {
-                if (G.part[v] != G.rank) continue;  // Skip if vertex not in this partition
+                if (G.part[v] != G.rank) continue;
                 if (G.affected[v]) {
                     G.affected[v] = false;
                     queue<int> Q;
@@ -354,8 +347,6 @@ void asynchronousUpdate(Graph& G, int async_level) {
                     while (!Q.empty() && level <= async_level) {
                         int x = Q.front();
                         Q.pop();
-
-                        // Check neighbors
                         int start = G.row_ptr[x];
                         int end = (x + 1 < G.row_ptr.size()) ? G.row_ptr[x + 1] : G.col_idx.size();
                         for (int i = start; i < end; ++i) {
@@ -381,6 +372,7 @@ void asynchronousUpdate(Graph& G, int async_level) {
                                     G.dist[n] = G.dist[x] + w;
                                     G.parent[n] = x;
                                     G.affected[n] = true;
+
                                     change = true;
                                 }
                                 if (level < async_level) {
@@ -446,11 +438,9 @@ int readGraphFromFile(const string& filename, Graph& G, vector<Edge>& all_edges)
     string line;
     int max_vertex = 0;
 
-    // Skip first two lines (header)
-    getline(file, line); // # Directed and weighted edge list from Slashdot0811.txt
-    getline(file, line); // # FromNodeId ToNodeId Weight
+    getline(file, line); 
+    getline(file, line); 
 
-    // Read edges
     while (getline(file, line)) {
         istringstream iss(line);
         int u, v;
@@ -462,7 +452,6 @@ int readGraphFromFile(const string& filename, Graph& G, vector<Edge>& all_edges)
     }
     file.close();
 
-    // Resize graph to accommodate all vertices
     G.num_vertices = max_vertex + 1;
     G.parent.resize(G.num_vertices, -1);
     G.dist.resize(G.num_vertices, numeric_limits<double>::infinity());
@@ -470,12 +459,10 @@ int readGraphFromFile(const string& filename, Graph& G, vector<Edge>& all_edges)
     G.affected_del.resize(G.num_vertices, false);
     G.part.resize(G.num_vertices, -1);
 
-    // Add edges to graph
     for (const auto& edge : all_edges) {
         G.addEdge(edge.u, edge.v, edge.weight);
     }
 
-    // Finalize row_ptr
     while (G.row_ptr.size() < G.num_vertices + 1) {
         G.row_ptr.push_back(G.col_idx.size());
     }
@@ -487,17 +474,18 @@ int main(int argc, char* argv[]) {
     MPI_Init(&argc, &argv);
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);git pull --rebase origin main
+    git pull --rebase origin main
+    git pull --rebase origin main
+    git pull --rebase origin main
 
-    // Initialize random seed
+
     random_device rd;
     mt19937 gen(rd() + rank);
 
-    // Initialize graph
     Graph G(0, rank, size);
     vector<Edge> all_edges;
 
-    // Read graph from file
     if (readGraphFromFile("weighted_edge_list.txt", G, all_edges) != 0) {
         if (rank == 0) {
             cerr << "Failed to read graph\n";
@@ -506,20 +494,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Partition the graph
     G.partitionGraph(size);
 
-    // Initialize SSSP tree from source vertex 0
     initializeSSSP(G, 0);
 
-    // Apply deletions from file
     long long total_delete_time = 0;
     total_delete_time = G.deleteEdgesFromFile("deletions.txt");
     if (rank == 0) {
         cout << "Total deletion time: " << total_delete_time << " microseconds\n";
     }
 
-    // Apply insertions from file
     long long total_insert_time = 0;
     total_insert_time = G.insertEdgesFromFile("insertions.txt");
     if (rank == 0) {
